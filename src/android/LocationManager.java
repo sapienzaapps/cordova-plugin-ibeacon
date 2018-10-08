@@ -152,7 +152,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
         }
         //TODO AddObserver when page loaded
 
-        tryToRequestMarshmallowLocationPermission();
+        //tryToRequestMarshmallowLocationPermission();
     }
 
     /**
@@ -258,12 +258,12 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
     }
 
     @TargetApi(BUILD_VERSION_CODES_M)
-    private void tryToRequestMarshmallowLocationPermission() {
+    private boolean tryToRequestMarshmallowLocationPermission() {
 
         if (Build.VERSION.SDK_INT < BUILD_VERSION_CODES_M) {
             Log.i(TAG, "tryToRequestMarshmallowLocationPermission() skipping because API code is " +
                     "below criteria: " + String.valueOf(Build.VERSION.SDK_INT));
-            return;
+            return true;
         }
 
         final Activity activity = cordova.getActivity();
@@ -274,7 +274,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
             Log.e(TAG, "Could not obtain the method Activity.checkSelfPermission method. Will " +
                     "not check for ACCESS_COARSE_LOCATION even though we seem to be on a " +
                     "supported version of Android.");
-            return;
+            return true;
         }
 
         try {
@@ -287,7 +287,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
 
             if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
                 Log.i(TAG, "Permission for ACCESS_COARSE_LOCATION has already been granted.");
-                return;
+                return true;
             }
 
             final Method requestPermissionsMethod = getRequestPermissionsMethod();
@@ -296,7 +296,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
                 Log.e(TAG, "Could not obtain the method Activity.requestPermissions. Will " +
                         "not ask for ACCESS_COARSE_LOCATION even though we seem to be on a " +
                         "supported version of Android.");
-                return;
+                return true;
             }
 
             final AlertDialog.Builder builder = new AlertDialog.Builder(activity);
@@ -330,6 +330,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
         } catch (final InvocationTargetException e) {
             Log.w(TAG, "InvocationTargetException while checking for ACCESS_COARSE_LOCATION:", e);
         }
+        return true;
     }
 
     private Method getCheckSelfPermissionMethod() {
@@ -970,6 +971,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
 
             @Override
             public PluginResult run() {
+                tryToRequestMarshmallowLocationPermission();
                 return new PluginResult(PluginResult.Status.OK);
             }
         });
@@ -980,6 +982,7 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
 
             @Override
             public PluginResult run() {
+                tryToRequestMarshmallowLocationPermission();
                 return new PluginResult(PluginResult.Status.OK);
             }
         });
