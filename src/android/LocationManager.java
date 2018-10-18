@@ -42,6 +42,8 @@ import org.altbeacon.beacon.Beacon;
 import org.altbeacon.beacon.BeaconConsumer;
 import org.altbeacon.beacon.BeaconManager;
 import org.altbeacon.beacon.BeaconParser;
+import org.altbeacon.beacon.startup.RegionBootstrap;
+import org.altbeacon.beacon.startup.BootstrapNotifier;
 
 import org.altbeacon.beacon.BeaconTransmitter;
 import android.bluetooth.le.AdvertiseCallback;
@@ -68,6 +70,8 @@ import java.lang.reflect.Method;
 import java.security.InvalidKeyException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -96,6 +100,10 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
     //listener for changes in state for system Bluetooth service
     private BroadcastReceiver broadcastReceiver;
     private BluetoothAdapter bluetoothAdapter;
+
+	// Background region bootstrap
+	private RegionBootstrap regionBootstrap;
+    private BeaconManager appBeaconManager;
 
 
     /**
@@ -234,6 +242,8 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
             enableBluetooth(callbackContext);
         } else if (action.equals("disableBluetooth")) {
             disableBluetooth(callbackContext);
+        } else if (action.equals("regionBootstrap")) {
+            regionBootstrap(args.optString(0), args.optJSONArray(1), callbackContext);
         } else {
             return false;
         }
@@ -687,6 +697,83 @@ public class LocationManager extends CordovaPlugin implements BeaconConsumer {
             public PluginResult run() {
                 resumeEventPropagationToDom();
                 return new PluginResult(PluginResult.Status.OK);
+            }
+        });
+    }
+
+    private void regionBootstrap(final String packageName, final JSONArray jregions, CallbackContext callbackContext) {
+		final Context context = this.cordova.getActivity().getApplicationContext();
+        _handleCallSafely(callbackContext, new ILocationManagerCommand() {
+
+            @Override
+            public PluginResult run() {
+                try {
+					List<Region> regions = new ArrayList<>();
+					for (int i = 0; i < jregions.length(); i++) {
+						regions.add(parseRegion(jregions.getJSONObject(i)));
+					}
+					appBeaconManager = BeaconManager.getInstanceForApplication(context);
+
+					BootstrapNotifier notifier = new BootstrapNotifier() {
+
+						@Override
+						public Context getApplicationContext() {
+							return context;
+						}
+
+			            @Override
+			            public void didEnterRegion(Region region) {
+			                debugLog("didEnterRegion INSIDE for " + region.getUniqueId());
+			                dispatchMonitorState("didEnterRegion", MonitorNotifier.INSIDE, region, callbackContext);
+			            }
+
+			            @Override
+			            public void didExitRegion(Region region) {
+			                debugLog("didExitRegion OUTSIDE for " + region.getUniqueId());
+			                dispatchMonitorState("didExitRegion", MonitorNotifier.OUTSIDE, region, callbackContext);
+			            }
+
+			            @Override
+			            public void didDetermineStateForRegion(int state, Region region) {
+			                debugLog("didDetermineStateForRegion '" + nameOfRegionState(state) + "' for region: " + region.getUniqueId());
+			                dispatchMonitorState("didDetermineStateForRegion", state, region, callbackContext);
+			            }
+
+			            // Send state to JS callback until told to stop
+			            private void dispatchMonitorState(final String eventType, final int state, final Region region, final CallbackContext callbackContext) {
+
+			                threadPoolExecutor.execute(new Runnable() {
+			                    public void run() {
+			                        try {
+			                            JSONObject data = new JSONObject();
+			                            data.put("eventType", eventType);
+			                            data.put("region", mapOfRegion(region));
+
+			                            if (eventType.equals("didDetermineStateForRegion")) {
+			                                String stateName = nameOfRegionState(state);
+			                                data.put("state", stateName);
+			                            }
+			                            //send and keep reference to callback
+			                            PluginResult result = new PluginResult(PluginResult.Status.OK, data);
+			                            result.setKeepCallback(true);
+			                            callbackContext.sendPluginResult(result);
+
+			                        } catch (Exception e) {
+			                            Log.e(TAG, "'monitoringDidFailForRegion' exception " + e.getCause());
+			                            // beaconServiceNotifier.monitoringDidFailForRegion(region, e);
+			                        }
+			                    }
+			                });
+			            }
+			        };
+
+					regionBootstrap = new RegionBootstrap(notifier, regions);
+
+                    return new PluginResult(PluginResult.Status.OK);
+                } catch (Exception e) {
+                    debugWarn("'regionBootstrap' exception " + e.getMessage());
+                    return new PluginResult(PluginResult.Status.ERROR, e.getMessage());
+                }
             }
         });
     }
